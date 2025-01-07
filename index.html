@@ -2,13 +2,15 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Google Scholar Citation Comparer</title>
+  <title>Compare Google Scholar Profiles</title>
   <style>
     body {
       font-family: sans-serif;
-      max-width: 600px;
+      max-width: 800px;
       margin: 20px auto;
       text-align: center;
+      color: white;
+      background-color: black;
     }
     .inputs {
       margin-bottom: 10px;
@@ -17,94 +19,132 @@
       margin-top: 20px;
       font-weight: bold;
     }
+    canvas {
+      margin-top: 20px;
+    }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
-<h2>Compare Google Scholar Citations</h2>
-<div class="inputs">
-  <label>Scholar User ID 1: <input type="text" id="profile1" placeholder="e.g. RBC9W6AAAAAJ"></label>
-</div>
-<div class="inputs">
-  <label>Scholar User ID 2: <input type="text" id="profile2" placeholder="e.g. IjN9W6AAAAAJ"></label>
-</div>
-<button onclick="compareCitations()">Compare</button>
+<h2>Compare Google Scholar Profiles</h2>
+<p>Enter two Google Scholar profile URLs to compare citations, h-index, and i10-index.</p>
 
+<div class="inputs">
+  <label>Scholar Profile 1: <input type="text" id="profile1" placeholder="Google Scholar URL 1" size="50"></label>
+</div>
+<div class="inputs">
+  <label>Scholar Profile 2: <input type="text" id="profile2" placeholder="Google Scholar URL 2" size="50"></label>
+</div>
+
+<button onclick="compareProfiles()">Compare</button>
+
+<!-- Display Results -->
 <div class="result" id="resultArea"></div>
 
+<!-- Chart Containers -->
+<canvas id="chartCitations" width="600" height="300"></canvas>
+<canvas id="chartHindex" width="600" height="300"></canvas>
+<canvas id="chartI10" width="600" height="300"></canvas>
+
 <script>
-async function fetchCitationCount(userId) {
-  const url = `https://scholar.google.com/citations?user=${encodeURIComponent(userId)}`;
-  
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Connection': 'keep-alive'
-      }
-    });
-
-    if (!response.ok) {
-      console.error(`HTTP error: ${response.status}`);
-      return null;
+// Force Google Scholar URLs to English
+function forceEnglishParam(rawUrl) {
+    try {
+        const urlObj = new URL(rawUrl);
+        urlObj.searchParams.set("hl", "en"); // Ensure results are in English
+        return urlObj.toString();
+    } catch (err) {
+        return rawUrl.includes("?") ? rawUrl + "&hl=en" : rawUrl + "?hl=en";
     }
-
-    const html = await response.text();
-
-    // Parse the "Cited by" count dynamically
-    const match = html.match(/<td[^>]*class="gsc_rsb_std"[^>]*>(\d+)<\/td>/);
-    if (match && match[1]) {
-      return parseInt(match[1], 10);
-    }
-
-    console.error("Could not parse citation count.");
-    return null;
-  } catch (error) {
-    console.error("Error fetching citation count:", error);
-    return null;
-  }
 }
 
-async function compareCitations() {
-  const profileId1 = document.getElementById("profile1").value.trim();
-  const profileId2 = document.getElementById("profile2").value.trim();
+// Fetch profile data through CORS proxy
+async function fetchProfileStats(profileUrl) {
+    const scholarUrl = forceEnglishParam(profileUrl);
+    const proxyUrl = "https://api.allorigins.win/get?url=" + encodeURIComponent(scholarUrl);
 
-  if (!profileId1 || !profileId2) {
-    document.getElementById("resultArea").innerText = "Enter both user IDs.";
-    return;
-  }
+    const response = await fetch(proxyUrl);
+    const data = await response.json();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(data.contents, "text/html");
 
-  // Display loading message
-  document.getElementById("resultArea").innerText = "Fetching data...";
+    let totalCitations = 0, hIndex = 0, i10Index = 0;
 
-  // Fetch citation counts
-  const [count1, count2] = await Promise.all([
-    fetchCitationCount(profileId1),
-    fetchCitationCount(profileId2)
-  ]);
+    // Locate the statistics table
+    const rows = doc.querySelectorAll("#gsc_rsb_st tr");
+    for (let row of rows) {
+        const cells = row.querySelectorAll("td");
+        if (cells.length >= 2) {
+            const label = cells[0].innerText.trim().toLowerCase();
+            const value = parseInt(cells[1].innerText.replace(/\D+/g, ""), 10);
 
-  // Handle cases where fetching fails
-  if (count1 === null || count2 === null) {
-    document.getElementById("resultArea").innerText =
-      "Could not retrieve one or both citation counts (possibly blocked by Google or incorrect IDs).";
-    return;
-  }
+            if (!isNaN(value)) {
+                if (label.includes("citation")) totalCitations = value;
+                if (label.includes("h-index")) hIndex = value;
+                if (label.includes("i10")) i10Index = value;
+            }
+        }
+    }
 
-  // Display results
-  let resultText = `Profile 1 (ID: ${profileId1}) Citations: ${count1}\n` +
-                   `Profile 2 (ID: ${profileId2}) Citations: ${count2}\n\n`;
+    return { totalCitations, hIndex, i10Index };
+}
 
-  if (count1 > count2) {
-    resultText += "Profile 1 has more citations.";
-  } else if (count2 > count1) {
-    resultText += "Profile 2 has more citations.";
-  } else {
-    resultText += "They have the same number of citations.";
-  }
+// Compare two scholar profiles
+async function compareProfiles() {
+    const url1 = document.getElementById("profile1").value.trim();
+    const url2 = document.getElementById("profile2").value.trim();
 
-  document.getElementById("resultArea").innerText = resultText;
+    if (!url1 || !url2) {
+        alert("Please enter two valid Google Scholar profile URLs.");
+        return;
+    }
+
+    document.getElementById("resultArea").innerText = "Fetching data...";
+
+    try {
+        const [profile1, profile2] = await Promise.all([
+            fetchProfileStats(url1),
+            fetchProfileStats(url2)
+        ]);
+
+        document.getElementById("resultArea").innerText =
+            `Profile 1: ${profile1.totalCitations} citations, h-index: ${profile1.hIndex}, i10-index: ${profile1.i10Index}\n` +
+            `Profile 2: ${profile2.totalCitations} citations, h-index: ${profile2.hIndex}, i10-index: ${profile2.i10Index}`;
+
+        plotCharts(profile1, profile2);
+    } catch (err) {
+        console.error(err);
+        document.getElementById("resultArea").innerText = "Error fetching citation data. Please check the URLs.";
+    }
+}
+
+// Plot comparison charts using Chart.js
+function plotCharts(profile1, profile2) {
+    const labels = ["Profile 1", "Profile 2"];
+    const chartConfig = (ctx, label, data) => ({
+        type: "bar",
+        data: {
+            labels: labels,
+            datasets: [{
+                label: label,
+                data: data,
+                backgroundColor: ["red", "blue"]
+            }]
+        },
+        options: {
+            responsive: false,
+            scales: {
+                x: { title: { display: true, text: "Scholar Profile", color: "white" }, ticks: { color: "white" } },
+                y: { beginAtZero: true, title: { display: true, text: label, color: "white" }, ticks: { color: "white" } }
+            },
+            plugins: { legend: { labels: { color: "white" } } }
+        }
+    });
+
+    new Chart(document.getElementById("chartCitations").getContext("2d"), chartConfig("chartCitations", "Total Citations", [profile1.totalCitations, profile2.totalCitations]));
+    new Chart(document.getElementById("chartHindex").getContext("2d"), chartConfig("chartHindex", "h-index", [profile1.hIndex, profile2.hIndex]));
+    new Chart(document.getElementById("chartI10").getContext("2d"), chartConfig("chartI10", "i10-index", [profile1.i10Index, profile2.i10Index]));
 }
 </script>
 
