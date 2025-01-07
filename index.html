@@ -53,10 +53,8 @@ async function fetchCitationCount(userId) {
 
   const text = await response.text();
 
-  // Parse out the "Cited by" total. This is brittle; Google can change 
-their HTML at any time.
-  // Typically the total citations appear near: <td 
-class="gsc_rsb_std">1234</td>
+  // Parse out the "Cited by" total. This is brittle; Google can change their HTML at any time.
+  // Typically the total citations appear near: <td  class="gsc_rsb_std">1234</td>
   // (the first occurrence is "Citations" total). We do a quick match:
   const match = text.match(/<td class="gsc_rsb_std">(\d+)<\/td>/);
   if (match && match[1]) {
@@ -83,8 +81,7 @@ IDs.";
 
   if (count1 === null || count2 === null) {
     document.getElementById("resultArea").innerText =
-      "Could not retrieve one or both citation counts (possibly blocked by 
-Google or incorrect IDs).";
+      "Could not retrieve one or both citation counts (possibly blocked by Google or incorrect IDs).";
     return;
   }
 
