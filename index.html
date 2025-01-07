@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Google Scholar Citation Comparer</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 600px;
+      margin: 20px auto;
+      text-align: center;
+    }
+    .inputs {
+      margin-bottom: 10px;
+    }
+    .result {
+      margin-top: 20px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Compare Google Scholar Citations</h2>
+<div class="inputs">
+  <label>Scholar User ID 1: <input type="text" id="profile1" 
+placeholder="e.g. RBC9W6AAAAAJ"></label>
+</div>
+<div class="inputs">
+  <label>Scholar User ID 2: <input type="text" id="profile2" 
+placeholder="e.g. IjN9W6AAAAAJ"></label>
+</div>
+<button onclick="compareCitations()">Compare</button>
+
+<div class="result" id="resultArea"></div>
+
+<script>
+async function fetchCitationCount(userId) {
+  // Construct the Google Scholar URL
+  const url = 
+`https://scholar.google.com/citations?user=${encodeURIComponent(userId)}`;
+
+  // Attempt to fetch the page HTML
+  const response = await fetch(url, { mode: 'cors' })
+    .catch(err => {
+      console.error("Fetch failed:", err);
+      return null;
+    });
+
+  if (!response || !response.ok) {
+    return null;
+  }
+
+  const text = await response.text();
+
+  // Parse out the "Cited by" total. This is brittle; Google can change 
+their HTML at any time.
+  // Typically the total citations appear near: <td 
+class="gsc_rsb_std">1234</td>
+  // (the first occurrence is "Citations" total). We do a quick match:
+  const match = text.match(/<td class="gsc_rsb_std">(\d+)<\/td>/);
+  if (match && match[1]) {
+    return parseInt(match[1], 10);
+  }
+  return null;
+}
+
+async function compareCitations() {
+  const profileId1 = document.getElementById("profile1").value.trim();
+  const profileId2 = document.getElementById("profile2").value.trim();
+
+  if (!profileId1 || !profileId2) {
+    document.getElementById("resultArea").innerText = "Enter both user 
+IDs.";
+    return;
+  }
+
+  // Fetch citation counts in parallel
+  const [count1, count2] = await Promise.all([
+    fetchCitationCount(profileId1),
+    fetchCitationCount(profileId2)
+  ]);
+
+  if (count1 === null || count2 === null) {
+    document.getElementById("resultArea").innerText =
+      "Could not retrieve one or both citation counts (possibly blocked by 
+Google or incorrect IDs).";
+    return;
+  }
+
+  let resultText = `Profile 1 (ID: ${profileId1}) Citations: ${count1}\n` 
++
+                   `Profile 2 (ID: ${profileId2}) Citations: 
+${count2}\n\n`;
+  
+  if (count1 > count2) {
+    resultText += "Profile 1 has more citations.";
+  } else if (count2 > count1) {
+    resultText += "Profile 2 has more citations.";
+  } else {
+    resultText += "They have the same number of citations.";
+  }
+
+  document.getElementById("resultArea").innerText = resultText;
+}
+</script>
+
+</body>
+</html>
+
