@@ -9,8 +9,8 @@
       max-width: 800px;
       margin: 20px auto;
       text-align: center;
-      color: white;
-      background-color: black;
+      color: black;
+      background-color: white;
     }
     .inputs {
       margin-bottom: 10px;
@@ -28,7 +28,7 @@
 <body>
 
 <h2>Compare Google Scholar Profiles</h2>
-<p>Enter two Google Scholar profile URLs to compare citations, h-index, and i10-index.</p>
+<p>Enter two Google Scholar profile URLs to compare citations, h-index, i10-index, and citations from 2025.</p>
 
 <div class="inputs">
   <label>Scholar Profile 1: <input type="text" id="profile1" placeholder="Google Scholar URL 1" size="50"></label>
@@ -44,6 +44,7 @@
 
 <!-- Chart Containers -->
 <canvas id="chartCitations" width="600" height="300"></canvas>
+<canvas id="chartCitations2025" width="600" height="300"></canvas>
 <canvas id="chartHindex" width="600" height="300"></canvas>
 <canvas id="chartI10" width="600" height="300"></canvas>
 
@@ -69,7 +70,7 @@ async function fetchProfileStats(profileUrl) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(data.contents, "text/html");
 
-    let totalCitations = 0, hIndex = 0, i10Index = 0;
+    let totalCitations = 0, citations2025 = 0, hIndex = 0, i10Index = 0;
 
     // Locate the statistics table
     const rows = doc.querySelectorAll("#gsc_rsb_st tr");
@@ -87,7 +88,19 @@ async function fetchProfileStats(profileUrl) {
         }
     }
 
-    return { totalCitations, hIndex, i10Index };
+    // Extract yearly citations (including 2025)
+    const yearLabels = doc.querySelectorAll(".gsc_g_t");
+    const citationCounts = doc.querySelectorAll(".gsc_g_al");
+
+    yearLabels.forEach((yearElement, index) => {
+        const year = parseInt(yearElement.innerText.trim(), 10);
+        const count = parseInt(citationCounts[index].innerText.trim().replace(/\D+/g, ""), 10);
+        if (year === 2025 && !isNaN(count)) {
+            citations2025 = count;
+        }
+    });
+
+    return { totalCitations, citations2025, hIndex, i10Index };
 }
 
 // Compare two scholar profiles
@@ -109,8 +122,8 @@ async function compareProfiles() {
         ]);
 
         document.getElementById("resultArea").innerText =
-            `Profile 1: ${profile1.totalCitations} citations, h-index: ${profile1.hIndex}, i10-index: ${profile1.i10Index}\n` +
-            `Profile 2: ${profile2.totalCitations} citations, h-index: ${profile2.hIndex}, i10-index: ${profile2.i10Index}`;
+            `Profile 1: ${profile1.totalCitations} total citations, ${profile1.citations2025} in 2025, h-index: ${profile1.hIndex}, i10-index: ${profile1.i10Index}\n` +
+            `Profile 2: ${profile2.totalCitations} total citations, ${profile2.citations2025} in 2025, h-index: ${profile2.hIndex}, i10-index: ${profile2.i10Index}`;
 
         plotCharts(profile1, profile2);
     } catch (err) {
@@ -135,14 +148,15 @@ function plotCharts(profile1, profile2) {
         options: {
             responsive: false,
             scales: {
-                x: { title: { display: true, text: "Scholar Profile", color: "white" }, ticks: { color: "white" } },
-                y: { beginAtZero: true, title: { display: true, text: label, color: "white" }, ticks: { color: "white" } }
+                x: { title: { display: true, text: "Scholar Profile", color: "black" }, ticks: { color: "black" } },
+                y: { beginAtZero: true, title: { display: true, text: label, color: "black" }, ticks: { color: "black" } }
             },
-            plugins: { legend: { labels: { color: "white" } } }
+            plugins: { legend: { labels: { color: "black" } } }
         }
     });
 
     new Chart(document.getElementById("chartCitations").getContext("2d"), chartConfig("chartCitations", "Total Citations", [profile1.totalCitations, profile2.totalCitations]));
+    new Chart(document.getElementById("chartCitations2025").getContext("2d"), chartConfig("chartCitations2025", "Citations in 2025", [profile1.citations2025, profile2.citations2025]));
     new Chart(document.getElementById("chartHindex").getContext("2d"), chartConfig("chartHindex", "h-index", [profile1.hIndex, profile2.hIndex]));
     new Chart(document.getElementById("chartI10").getContext("2d"), chartConfig("chartI10", "i10-index", [profile1.i10Index, profile2.i10Index]));
 }
